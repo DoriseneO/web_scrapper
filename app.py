@@ -8,8 +8,10 @@ import requests
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from typing import List
-
-
+from langchain_core.prompts import ChatPromptTemplate,MessagesPlaceholder
+from langchain_core.messages import HumanMessage,SystemMessage
+# from langchain_ollama import OllamaLLM
+from langchain.chat_models import init_chat_model
 # Load .env file
 load_dotenv()
 
@@ -22,7 +24,8 @@ FIRECRAWL_API_KEY = os.getenv("FIRECRAWL_API_KEY")
 headers = {"User-Agent": USER_AGENT}
 
 # Target URL
-web_url = "https://www.walgreensbootsalliance.com/"
+# web_url = "https://www.walgreensbootsalliance.com/"
+web_url =  "https://python.langchain.com/docs/concepts/"
 
 # Send request with User-Agent
 response = requests.get(web_url, headers=headers)
@@ -36,9 +39,9 @@ loader.requests_kwargs = {
 load = loader.load()
 
 # Split the loaded content into manageable chunks
-splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200, add_start_index=True)
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100, add_start_index=True)
 text_split = splitter.split_documents(load)
-print(f"Number of chunks created: {len(text_split)}")
+# print(f"Number of chunks created: {len(text_split)}")
 
 # Embed the content
 embeddings = OpenAIEmbeddings(model="text-embedding-3-large")
@@ -49,15 +52,38 @@ vector_store = Chroma.from_documents(text_split, embeddings)
 # Custom Retriever Class
 class MyCustomRetriever(BaseRetriever):
     def _get_relevant_documents(self, query: str) -> List[Document]:
-        return vector_store.similarity_search(query)
+        return vector_store.similarity_search(query,k=2)
 
 # Instantiate your custom retriever
 custom_retriever = MyCustomRetriever()
 
-# Query the retriever
-query = "regulation year?"
-relevant_documents = custom_retriever._get_relevant_documents(query)
- #ftyujkl;
-# Print the retrieved documents
-for doc in relevant_documents:
-    print(doc.page_content)
+while True:
+    query = input("Ask me a question on langchain (or type 'quit' to quit): \n USER: ")
+
+    if query.lower() == 'quit':
+        print("Goodbye!")
+        break
+
+    # Get relevant documents
+    relevant_documents = custom_retriever._get_relevant_documents(query)
+
+    # Create a conversational prompt template
+    conversational_prompt = ChatPromptTemplate.from_messages([
+        SystemMessage(content=f"You are an AI assistant.provide response exaclty as stated {query}, If you do not know the answer, respond with 'I don't know.' Otherwise, provide a clear and concise response."),
+        HumanMessage(content="{user_query}"),
+        MessagesPlaceholder(variable_name="retrieved_data")
+    ])
+
+    # Format the retrieved documents
+    retrieved_context = "\n".join([doc.page_content for doc in relevant_documents])
+
+    # Format chat prompt
+    chat_prompt = conversational_prompt.format(user_query=query, retrieved_data=[retrieved_context])
+
+    # Create LLM and get response
+    try:
+        llm_model = init_chat_model("gpt-4o-mini", model_provider="openai")
+        response = llm_model.invoke(chat_prompt)
+        print("AI:", response)
+    except Exception as e:
+        print(f"Error while getting response: {e}")
