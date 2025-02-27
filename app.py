@@ -11,6 +11,8 @@ from typing import List
 from langchain_core.prompts import ChatPromptTemplate,MessagesPlaceholder
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain.chat_models import init_chat_model
+from langchain_core.output_parsers import StrOutputParser
+
 
 # Load .env file
 load_dotenv()
@@ -36,7 +38,7 @@ loader.requests_kwargs = {
 load = loader.load()
 
 # Split the loaded content into manageable chunks
-splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100, add_start_index=True)
+splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=0, add_start_index=True)
 text_split = splitter.split_documents(load)
 
 # Embed the content
@@ -63,29 +65,26 @@ while True:
     # Get relevant documents
     relevant_documents = custom_retriever._get_relevant_documents(query)
 
-# # # Debugging: Print retrieved documents and their count
+# ## Debug: Print Retrieved Documents
 #     print(f"Number of retrieved documents: {len(relevant_documents)}")
 #     for i, doc in enumerate(relevant_documents):
-#         print(f"Document {i + 1}: {doc.page_content}")
+#         print(f"Document {i + 1}: {doc.page_content}\n")
 
-    
-    # Create a conversational prompt template
-    conversational_prompt = ChatPromptTemplate.from_messages([
-        SystemMessage(content=f"You are an AI assistant. Based on the following context, provide a clear and concise response to the user's query: '{query}'. If the information is insufficient, respond with 'I don't know.'"),
-        HumanMessage(content=query),
-        MessagesPlaceholder(variable_name="msg")
-    ])
-    
-  # Format the retrieved documents as a single string with context
-    retrieved_context = [doc.page_content for doc in relevant_documents]
+    # Convert retrieved documents to a formatted string
+    retrieved_context = "\n\n".join([doc.page_content for doc in relevant_documents])
 
-    # Format chat prompt by including the retrieved context
-    chat_prompt = conversational_prompt.format(user_query=query,msg=retrieved_context)
+    # Create a conversational prompt template with retrieved context
+    conversational_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", f"You are an AI assistant. Use the following context to answer user queries:\n\n{retrieved_context}\n\nIf the information is insufficient, respond with 'can you be more specific and provide more details.'"),
+            ("human", "{user_query}")
+        ]
+    )
 
-    # Create LLM and get response
-    try:
-        llm_model = init_chat_model("gpt-4o-mini", model_provider="openai")
-        response = llm_model.invoke(chat_prompt)
-        print("AI:", response.content)
-    except Exception as e:
-        print(f"Error while getting response: {e}")
+    llm_model = init_chat_model("gpt-4o-mini", model_provider="openai")
+
+    # Execute chain
+    chain = conversational_prompt | llm_model | StrOutputParser()
+    result = chain.invoke({"user_query": query})
+
+    print(result)
