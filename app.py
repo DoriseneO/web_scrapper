@@ -77,10 +77,4 @@ while True:
     prompt = conversational_prompt.invoke({"user_query": query, "context": docs_content})
     answer = llm_model.invoke(prompt)
     print(answer.content)
-    # Retrieve the relevant documents based on the query
-    # relevant_documents = custom_retriever._get_relevant_documents(query)
-    # # Execute chain directly within the prompt
-    # chain = conversational_prompt | llm_model | StrOutputParser()
-    # result = chain.invoke({"user_query": query,"context":relevant_documents})
-
-    # print(result)
+  
